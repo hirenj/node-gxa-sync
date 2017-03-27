@@ -58,6 +58,9 @@ downloadExpData = function() {
 	// Download files to a local folder if they are newer than a given time..
 
 	// ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.tsv
+
+	// Entries have min,percentile,median,percentile,max for each row apparently?
+
 	// ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358-configuration.xml
 
 	// Parse the files, extracting the info we want and translating the ensembl to entrez ids
