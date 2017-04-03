@@ -5,72 +5,82 @@ const request = require('request');
 
 const experiments_url = 'http://www.ebi.ac.uk/gxa/json/experiments';
 
+const baseline_whitelist = [ 'E-MTAB-5214', 'E-MTAB-2836'];
+
 let getExperiments = () => {
-	return new Promise(function(resolve,reject) {
-		request(experiments_url,function(err,response,body) {
-			if ( err ) {
-				return resolve(err);
-			}
-			let parsed = JSON.parse(body);
-			if ( ! parsed.aaData) {
-				return resolve(new Error('Invalid data format'));
-			}
-			resolve(parsed.aaData);
-		});
-	});
+  return new Promise(function(resolve,reject) {
+    request(experiments_url,function(err,response,body) {
+      if ( err ) {
+        return resolve(err);
+      }
+      let parsed = JSON.parse(body);
+      if ( ! parsed.aaData) {
+        return resolve(new Error('Invalid data format'));
+      }
+      resolve(parsed.aaData);
+    });
+  });
 };
 
 let filterSpecies = (species,experiments) => {
-	let species_set = new Set(species);
-	return experiments.filter((exp) => {
-		return (exp.species || []).filter((tax) => species_set.has(tax)).length > 0;
-	});
+  let species_set = new Set(species);
+  return experiments.filter((exp) => {
+    return [].concat((exp.species || [])).filter((tax) => species_set.has(tax)).length > 0;
+  });
 };
 
 let filterBaseline = (experiments) => {
-	return experiments.filter((exp) => {
-		return exp.experimentType === 'RNASEQ_MRNA_BASELINE';
-	});
+  return experiments.filter((exp) => {
+    return exp.experimentType === 'RNASEQ_MRNA_BASELINE';
+  }).filter( exp => {
+    return (baseline_whitelist.length == 0) || baseline_whitelist.indexOf(exp.experimentAccession) >= 0;
+  });
 };
 
 let getExperimentInfo = (exp) => {
-	return {
-		accession: exp.experimentAccession,
-		date: exp.lastUpdate,
-		sources: exp.experimentalFactors,
-		taxonomy: exp.species.join(','),
-		description: exp.experimentDescription
-	};
+  return {
+    accession: exp.experimentAccession,
+    date: exp.lastUpdate,
+    sources: exp.experimentalFactors,
+    taxonomy: [].concat(exp.species || []).join(','),
+    description: exp.experimentDescription
+  };
 };
 
 let getBaselineForSpecies = (species) => {
-	return getExperiments().then(filterSpecies.bind(null,species)).then(filterBaseline).then((exps) => exps.map(getExperimentInfo));
+  return getExperiments()
+  .then(filterSpecies.bind(null,species))
+  .then(filterBaseline)
+  .then((exps) => exps.map(getExperimentInfo));
 };
 
-getBaselineForSpecies = function() {
-	return Promise.resolve(require('./exps.parsed.json'));
+let make_ontology_url = function(experiment_id) {
+  return `ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/${experiment_id}/${experiment_id}.condensed-sdrf.tsv`;
 };
 
-downloadExpData = function() {
-	// Possibly not needed if we just trust the text for the organism part..
-	// ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.condensed-sdrf.tsv
+let download_ftp_file = function(url)
 
-	// Download files to a local folder if they are newer than a given time..
+let downloadExpData = function(experiment_id) {
+  get_ftp_stream(make_ontology_url(experiment_id));
+  // Possibly not needed if we just trust the text for the organism part..
+  // ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.condensed-sdrf.tsv
 
-	// ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.tsv
+  // Download files to a local folder if they are newer than a given time..
 
-	// Entries have min,percentile,median,percentile,max for each row apparently?
+  // ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.tsv
 
-	// ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358-configuration.xml
+  // Entries have min,percentile,median,percentile,max for each row apparently?
 
-	// Parse the files, extracting the info we want and translating the ensembl to entrez ids
-	
-	// Write this file out to a summarised data folder (in { data: {}, metadata: {} } format)
+  // ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358-configuration.xml
 
-	// Let Gator daemon figure out the hosting duties
+  // Parse the files, extracting the info we want and translating the ensembl to entrez ids
+
+  // Write this file out to a summarised data folder (in { data: {}, metadata: {} } format)
+
+  // Let Gator daemon figure out the hosting duties
 };
 
 let foo = getBaselineForSpecies(['Homo sapiens']).then((exps) => {
-	console.log(exps);
-	return exps;
+  console.log(exps);
+  return exps;
 }).catch((err) => console.error(err));
