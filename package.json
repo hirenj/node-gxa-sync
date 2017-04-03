@@ -9,6 +9,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "request": "^2.72.0"
+    "csv-parse": "^1.2.0",
+    "ftp": "^0.3.10",
+    "request": "^2.72.0",
+    "xml-nodes": "^0.1.5",
+    "xml-objects": "^1.0.1"
   }
 }
