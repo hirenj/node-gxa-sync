@@ -1,0 +1,24 @@
+#!/bin/bash
+
+version=$1
+
+exit_code=1
+
+exp_sets=$(node index.js --print-sets)
+for exp in $exp_sets; do
+	testversion_skip_exit "gxa_$exp.json" --static "$version"
+	retcode=$?
+	if [ $retcode -ne 0 ]; then
+		echo "Existing GXA data for $exp"
+	else
+		echo "No existing GXA data for $exp"
+		exit_code=0
+	fi
+done
+
+if [ $exit_code -eq 0 ]; then
+	exit 0
+else
+	echo "GXA files are up to date"
+	exit 1
+fi

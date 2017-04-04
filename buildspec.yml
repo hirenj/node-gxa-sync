@@ -1,0 +1,29 @@
+version: 0.1
+
+phases:
+  install:
+    commands:
+      - npm install
+  pre_build:
+    commands:
+      - ensembl_version=$(curl -Sss 'https://rest.ensembl.org/info/data?' -H 'Content-type:text/xml' | grep 'releases' | sed -e 's/.*<releases>//' -e 's/<.*//')
+      - ncbi_mapping_ensembl=$(curl -Sss 'ftp://ftp.ncbi.nih.gov/gene/DATA/README_ensembl' | grep 9606 | cut -f4)
+      - [[ "\$ncbi_mapping_ensembl" -le "\$ensembl_version" ]] && echo "NCBI mapping Ensembl version is less than or equal to the Ensembl version"
+      - echo "\$ncbi_mapping_ensembl" > ensembl_version.txt
+      - bin/check_versions 1
+  build:
+    commands:
+      - ensembl_version=$(<ensembl_version.txt)
+      - if [ ! -e 'gene2ensembl' ]; then curl -O 'ftp://ftp.ncbi.nih.gov/gene/DATA/gene2ensembl.gz'; fi
+      - if [ ! -e 'gene2ensembl' ]; then gunzip gene2ensembl.gz; fi
+      - echo "$WORKDIR"
+      - bin/download_sets $WORKDIR
+      - node index.js --workdir $WORKDIR --version="$TARGETVERSION" --git="$GIT_STATUS" --timestamp="$(date -u +%FT%TZ)"
+      - mkdir -p dist
+      - mv gxa*.json dist/
+  post_build:
+    commands:
+      - echo "Skipping post_build"
+artifacts:
+  files:
+    - dist

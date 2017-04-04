@@ -1,0 +1,9 @@
+#!/bin/bash
+
+workdir=$1
+
+for exp in `node index.js --print-sets`; do
+	if [ ! -e "$workdir/$exp.condensed-sdrf.tsv" ]; then ( cd $workdir; curl -O "ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/$exp/$exp.condensed-sdrf.tsv"); fi
+	if [ ! -e "$workdir/$exp.tsv" ]; then ( cd $workdir; curl -O "ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/$exp/$exp.tsv"); fi
+	if [ ! -e "$workdir/$exp-configuration.xml" ]; then ( cd $workdir; curl -O "ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/$exp/$exp-configuration.xml"); fi
+done

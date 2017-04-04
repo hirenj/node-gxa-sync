@@ -10,8 +10,61 @@ const parse_url = require('url').parse;
 const csv = require('csv-parse');
 const xmlNodes = require('xml-nodes');
 const xmlObjects = require('xml-objects');
+const fs = require('fs');
+const converter = require('node-uberon-mappings');
+const CheapJSON = require('./output').CheapJSON;
+const temp = require('temp');
+const path = require('path');
 
-const baseline_whitelist = [ 'E-MTAB-5214', 'E-MTAB-2836'];
+const baseline_whitelist = [ 'E-MTAB-2836', 'E-MTAB-5214','E-MTAB-4344' ];
+
+const stream = require('stream');
+const util = require('util');
+const Transform = stream.Transform;
+
+const nconf = require('nconf');
+
+nconf.argv();
+
+function EntryTransform(ontology,gene,config) {
+  if (!(this instanceof EntryTransform)) {
+    return new EntryTransform(mappings);
+  }
+  Transform.call(this, {objectMode: true});
+  this.ontology = ontology;
+  this.gene = gene;
+  this.config = config;
+};
+
+util.inherits(EntryTransform, Transform);
+
+temp.track();
+
+EntryTransform.prototype._transform = function(dat,enc,cb) {
+  let gene_id = this.gene[dat['Gene ID']];
+  delete dat['Gene ID'];
+  delete dat['Gene Name'];
+  if ( ! gene_id ) {
+    cb();
+    return;
+  }
+  let entries = Object.keys(dat).map( sample => {
+    let term_info = this.ontology[this.config[sample].sample] || {};
+    let vals = dat[sample].split(',').map( val => +val );
+    if ( ! term_info.uberon ) {
+      console.log(sample,this.config[sample]);
+    }
+    return {
+      gene_id: gene_id,
+      uberon: term_info.uberon,
+      simple_tissue: term_info.simple_tissue,
+      simple_uberon: term_info.simple_uberon,
+      exp: vals[2],
+      annotation: { exp: vals } };
+  });
+  this.push( [ gene_id, entries ]);
+  cb();
+};
 
 let getExperiments = () => {
   return new Promise(function(resolve,reject) {
@@ -77,7 +130,7 @@ const read_configuration = function(stream) {
   let data_stream = stream.pipe(xmlNodes('assay_group'))
   .pipe(xmlObjects({explicitRoot: false, explicitArray: false, mergeAttrs: true}))
   .on('data', dat => {
-    result[dat.id] = { label: dat.label, sample: dat.assay[0]['_'] };
+    result[dat.id] = { label: dat.label, sample: Array.isArray(dat.assay) ? dat.assay.map( assay_val => assay_val['_'] || assay_val )[0] : (dat.assay['_'] || dat.assay) };
   });
   return new Promise( (resolve,reject) => {
     data_stream.on('end',resolve);
@@ -113,6 +166,24 @@ const read_data = function(stream) {
   });
 };
 
+const read_geneids = (function() {
+  let stream = fs.createReadStream('gene2ensembl');
+  return new Promise( (resolve,reject) => {
+    let parser = csv({delimiter: "\t", relax_column_count: true, columns: true}, function(err, data){
+      if (err) {
+        reject(err);
+        return;
+      }
+      let results = {};
+      data.forEach( row => {
+        results[row.Ensembl_gene_identifier] = row.GeneID;
+      });
+      resolve(results);
+    });
+    stream.pipe(parser);
+  });
+})();
+
 const connect_ftp = function(url) {
   let req = parse_url(url);
   let ftp_site  = new ftp();
@@ -122,101 +193,121 @@ const connect_ftp = function(url) {
     });
     ftp_site.on('error',reject);
   });
-  req.connTimeout = 1000;
+  req.connTimeout = 3000;
   ftp_site.connect(req);
-  return result.catch(function(err) {
-    console.log(err);
-    return null;
-  });
+  return result;
 };
 
 const download_file = function(url,ftp) {
+  let outstream = temp.createWriteStream();
+  let out_path = outstream.path;
   let path = parse_url(url).path;
   return new Promise(function(resolve,reject) {
     ftp.get(path, function(err, stream) {
       if (err) {
         reject(err);
       } else {
-        resolve(stream);
+        stream.pipe(outstream);
+        outstream.once('close', () => {
+          ftp.end();
+          resolve(fs.createReadStream(out_path));
+        })
+        stream.on('error', err => reject(err));
       }
     });
   });
 };
 
-let downloadExpData = function(experiment_id) {
+const get_ebi_file = function(url) {
+  let filename = path.join(nconf.get('workdir') || '',url.split('/').reverse()[0]);
+  console.log(filename);
+  if (fs.existsSync(filename)) {
+    return Promise.resolve(fs.createReadStream(filename));
+  }
+  console.log('Downloading',url,'from ftp');
+  return connect_ftp(url).then(download_file.bind(null,url));
+};
+
+let downloadExpData = function(experiment_id,description) {
   let ontology_url = make_ontology_url(experiment_id);
   console.log(ontology_url);
-  let ontology_ids = connect_ftp(ontology_url)
-  .then( download_file.bind(null,ontology_url) )
+  let ontology_ids = get_ebi_file(ontology_url)
   .then( read_ontology )
-  // .then( ids => console.log(ids) )
-  .catch( console.log.bind(console) );
+  .then( ontology => {
+    let ontology_map = {};
+    return Promise.all(ontology.map( map => {
+      return converter.convert(map.ontology).then( converted => {
+        ontology_map[ map.sample_id ] = {
+          'uberon' : map.ontology,
+          'simple_tissue' : converted.name,
+          'simple_uberon' : converted.root,
+        }
+      });
+    })).then( () => ontology_map );
+  });
 
-  // Download files to a local folder if they are newer than a given time..
-
-  // ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/E-MTAB-3358/E-MTAB-3358.tsv
   let data_url = make_data_url(experiment_id);
   console.log(data_url);
-  let data = connect_ftp(data_url)
-  .then( download_file.bind(null,data_url) )
-  .then( read_data )
-  .then( data_stream => data_stream.on('data', dat => console.log(dat) ));
+  let data = get_ebi_file(data_url)
+  .then( read_data );
 
-/*
-{ 'Gene ID': 'ENSG00000000938',
-  'Gene Name': 'FGR',
-  g6: '5,7,9,12,15',
-  g10: '2,2,2,3,4',
-  g12: '2,3,5,6,7',
-  g7: '1,2,3,3,3',
-  g18: '3,4,5,14,22',
-  g3: '1,1,2,2,3',
-  g26: '15,19,21,23,29',
-  g19: '0.9,0.9,1,1,1',
-  g30: '9,9,9,9,9',
-  g27: '0.9,2,2,2,2',
-  g20: '0.7,1,2,2,2',
-  g4: '1,1,1,1,1',
-  g1: '14,15,18,21,21',
-  g8: '0.9,2,2,3,4',
-  g28: '0.4,0.8,1,2,4',
-  g25: '0.8,0.8,0.8,0.9,1',
-  g13: '2,4,5,22,33',
-  g2: '18,34,49,56,62',
-  g23: '0.7,0.7,0.8,1,2',
-  g15: '1,2,2,3,4',
-  g17: '0.7,0.9,1,1,1',
-  g31: '45,45,50,55,55',
-  g24: '0.9,1,2,2,2',
-  g21: '1,2,2,2,3',
-  g9: '3,3,3,4,5',
-  g16: '52,55,101,145,145',
-  g32: '3,3,3,4,7',
-  g29: '2,2,2,2,2',
-  g14: '1,3,3,4,6',
-  g11: '2,3,4,4,4',
-  g22: '0.2,0.2,0.3,0.5,0.7',
-  g5: '11,11,12,13,14' }
-*/
-
-  // Entries have min,percentile,median,percentile,max for each row apparently?
+  let gene_ids = read_geneids;
 
   let configuration_url = make_configuration_url(experiment_id);
   console.log(configuration_url);
-  let configuration = connect_ftp(configuration_url)
-  .then( download_file.bind(null,configuration_url) )
-  .then( read_configuration )
-  .then( groups => console.log(groups) )
+  let configuration = get_ebi_file(configuration_url)
+  .then( read_configuration );
 
-  // Parse the files, extracting the info we want and translating the ensembl to entrez ids
+  let writer = new CheapJSON({
+    'mimetype' : 'application/json+expression',
+    'title' : `${experiment_id} ${description}`,
+    'sample' : { 'species': 9606, 'tissue' : 'bto:0001489' },
+    'data-version' : ''+nconf.get('version'),
+    "software" : {"ARRAY": "true", "0" : { "name" : "hirenj/node-gxa-sync", "version" : nconf.get('git') , "run-date" : nconf.get('timestamp') }},
 
-  // Write this file out to a summarised data folder (in { data: {}, metadata: {} } format)
+  });
+  let output = fs.createWriteStream(`gxa_${experiment_id}.json`);
+  writer.pipe(output);
 
-  // Let Gator daemon figure out the hosting duties
+  return Promise.all([data,ontology_ids,gene_ids,configuration]).then( ids => {
+    let transformer = new EntryTransform( ids[1],ids[2],ids[3] );
+    return ids[0].pipe(transformer);
+  }).then( entry_stream => {
+    entry_stream.pipe(writer);
+    return new Promise( (resolve,reject) => {
+      output.on('finish',resolve);
+      output.on('close',resolve);
+      output.on('error',reject);
+      entry_stream.on('error',reject);
+    });
+  });
 };
 
-let foo = getBaselineForSpecies(['Homo sapiens']).then((exps) => {
-  console.log(exps);
-  downloadExpData(exps[0].accession);
-  return exps;
-}).catch((err) => console.error(err));
+const handle_exps = function(exps) {
+  if ( exps.length < 1 ) {
+    return;
+  }
+  let curr_exp = exps.shift();
+  return downloadExpData(curr_exp.accession,curr_exp.description).then( () => exps ).then( handle_exps );
+};
+
+if (nconf.get('print-sets')) {
+  getBaselineForSpecies(['Homo sapiens']).then( exps => {
+    exps.forEach(exp => {
+      console.log(exp.accession);
+    });
+  })
+  .then( () => process.exit(0) )
+  .catch((err) => {
+    console.error("Error is ",err);
+    process.exit(1);
+  });
+} else {
+  let foo = getBaselineForSpecies(['Homo sapiens']).then(handle_exps)
+  .then( () => process.exit(0) )
+  .catch((err) => {
+    console.error("Error is ",err);
+    process.exit(1);
+  });
+}
+
