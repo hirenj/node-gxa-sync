@@ -10,10 +10,11 @@
   "license": "ISC",
   "dependencies": {
     "csv-parse": "^1.2.0",
-    "node-uberon-mappings" : "hirenj/node-uberon-mappings",
     "ftp": "^0.3.10",
     "nconf": "^0.8.4",
+    "node-uberon-mappings": "hirenj/node-uberon-mappings",
     "request": "^2.72.0",
+    "temp": "^0.8.3",
     "xml-nodes": "^0.1.5",
     "xml-objects": "^1.0.1"
   }
