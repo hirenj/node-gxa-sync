@@ -167,8 +167,9 @@ const read_data = function(stream) {
 };
 
 const read_geneids = (function() {
-  let stream = fs.createReadStream('gene2ensembl');
   return new Promise( (resolve,reject) => {
+    let stream = fs.createReadStream('gene2ensembl');
+    stream.on('error',reject);
     let parser = csv({delimiter: "\t", relax_column_count: true, columns: true}, function(err, data){
       if (err) {
         reject(err);
