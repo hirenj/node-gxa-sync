@@ -12,6 +12,7 @@ const xmlNodes = require('xml-nodes');
 const xmlObjects = require('xml-objects');
 const fs = require('fs');
 const converter = require('node-uberon-mappings');
+const converter_efo = require('node-efo-cell_line-slimmer');
 const CheapJSON = require('./output').CheapJSON;
 const temp = require('temp');
 const path = require('path');
@@ -50,18 +51,25 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
   }
   let entries = Object.keys(dat).map( sample => {
     let term_info = this.ontology[this.config[sample].sample] || {};
+    if ( ! term_info.efo_label ) {
+      debugger;
+    }
+    if (term_info.subcellular) {
+      return;
+    }
     let vals = dat[sample].split(',').map( val => +val );
-    if ( ! term_info.uberon ) {
-      console.log(sample,this.config[sample]);
+    if ( ! term_info.ontology ) {
+      console.log("Missing ontology info",sample,this.config[sample]);
     }
     return {
       gene_id: gene_id,
-      uberon: term_info.uberon,
+      uberon: term_info.ontology,
       simple_tissue: term_info.simple_tissue,
       simple_uberon: term_info.simple_uberon,
+      efo: term_info.efo_label,
       exp: vals[2],
       annotation: { exp: vals } };
-  });
+  }).filter( entry => entry );
   this.push( [ gene_id, entries ]);
   cb();
 };
@@ -147,8 +155,15 @@ const read_ontology = function(stream) {
         reject(err);
         return;
       }
-      let ids = data.filter( row => row[3] == 'characteristic' && row[4] == 'organism part')
-      .map( row => { return { ontology: row[6], sample_id: row[2]  } })
+
+      let ids = data.filter( row => {
+        return (
+          ( row[3] == 'characteristic' && row[4] == 'organism part' ) ||
+          ( row[3] == 'characteristic' && row[4] == 'cell line' ) ||
+          ( row[3] == 'characteristic' && row[4] == 'cellular component')
+        );
+      })
+      .map( row => { return { ontology: row[6] || 'orphan_'+row[5], sample_id: row[2], desc: row[5] } })
       .filter( purl => purl && purl.ontology )
       .map( purl => {
         purl.ontology = purl.ontology.split('/').reverse().shift().replace('_',':');
@@ -237,11 +252,34 @@ let downloadExpData = function(experiment_id,description) {
   .then( ontology => {
     let ontology_map = {};
     return Promise.all(ontology.map( map => {
-      return converter.convert(map.ontology).then( converted => {
-        ontology_map[ map.sample_id ] = {
-          'uberon' : map.ontology,
-          'simple_tissue' : converted.name,
-          'simple_uberon' : converted.root,
+      let convert_engine = converter;
+      if (map.ontology.indexOf('EFO') == 0) {
+        convert_engine = converter_efo;
+      }
+      let values = ontology_map[ map.sample_id ] = ontology_map[ map.sample_id ] || {};
+
+      if (map.ontology.indexOf('GO') >= 0) {
+        if (map.ontology !== 'GO:0005623') {
+          values.subcellular = true;
+        }
+        return Promise.resolve();
+      }
+      if (map.ontology.indexOf('orphan') >= 0) {
+        values.efo_label = map.ontology.split(':')[1];
+      }
+      if (map.ontology.indexOf('CL') >= 0) {
+        values.efo_label = map.desc;
+      }
+      return convert_engine.convert(map.ontology).then( converted => {
+        let current_value = values.ontology || '';
+        // We let EFO and CL ontology values take precedence over UBERON values
+        values.ontology = (current_value.indexOf('EFO') >= 0 || current_value.indexOf('CL') >= 0) ? current_value : map.ontology;
+        if (converted.root) {
+          values.simple_tissue = converted.name;
+          values.simple_uberon = converted.root;
+        }
+        if (converted.efo_label) {
+          values.efo_label = converted.efo_label;
         }
       });
     })).then( () => ontology_map );
