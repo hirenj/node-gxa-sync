@@ -59,11 +59,8 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
       console.log("Missing ontology info",sample,this.config[sample]);
     }
     return {
-      gene_id: gene_id,
-      uberon: term_info.ontology,
-      simple_tissue: term_info.simple_tissue,
-      simple_uberon: term_info.simple_uberon,
-      efo: term_info.efo_label,
+      gene: gene_id,
+      loc: term_info.ontology,
       exp: vals[2],
       annotation: { exp: vals } };
   }).filter( entry => entry );
@@ -283,7 +280,6 @@ let downloadExpData = function(experiment_id,description) {
   });
 
   let data_url = make_data_url(experiment_id);
-  console.log(data_url);
   let data = get_ebi_file(data_url)
   .then( read_data );
 
@@ -294,10 +290,30 @@ let downloadExpData = function(experiment_id,description) {
   let configuration = get_ebi_file(configuration_url)
   .then( read_configuration );
 
+  let ontology_lookup = {};
+  let ontology_list = [];
+
+  ontology_ids.then( map => {
+    Object.keys(map).forEach(sample_id => {
+      let term_info = map[sample_id];
+      if ( ! ontology_lookup[ term_info.ontology ]) {
+        ontology_lookup[ term_info.ontology ] = true;
+        let new_entry = {
+          ontology_id: term_info.ontology,
+          simple_tissue: term_info.simple_tissue,
+          simple_uberon: term_info.simple_uberon,
+          description: term_info.efo_label
+        };
+        ontology_list.push(new_entry);
+      }
+    });
+  });
+
   let writer = new CheapJSON({
     'mimetype' : 'application/json+expression',
     'title' : `${experiment_id} ${description}`,
     'sample' : { 'species': 9606, 'tissue' : 'bto:0001489' },
+    'locations' : ontology_list,
     'data-version' : ''+nconf.get('version'),
     "software" : {"ARRAY": "true", "0" : { "name" : "hirenj/node-gxa-sync", "version" : nconf.get('git') , "run-date" : nconf.get('timestamp') }},
 
