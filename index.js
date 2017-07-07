@@ -51,9 +51,6 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
   }
   let entries = Object.keys(dat).map( sample => {
     let term_info = this.ontology[this.config[sample].sample] || {};
-    if ( ! term_info.efo_label ) {
-      debugger;
-    }
     if (term_info.subcellular) {
       return;
     }
@@ -267,7 +264,7 @@ let downloadExpData = function(experiment_id,description) {
       if (map.ontology.indexOf('orphan') >= 0) {
         values.efo_label = map.ontology.split(':')[1];
       }
-      if (map.ontology.indexOf('CL') >= 0) {
+      if ((map.ontology.indexOf('CL') >= 0) || (map.ontology.indexOf('BTO') >= 0)) {
         values.efo_label = map.desc;
       }
       return convert_engine.convert(map.ontology).then( converted => {
