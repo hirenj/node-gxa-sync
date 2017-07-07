@@ -13,6 +13,7 @@
     "ftp": "^0.3.10",
     "nconf": "^0.8.4",
     "node-uberon-mappings": "hirenj/node-uberon-mappings",
+    "node-efo-cell_line-slimmer" : "hirenj/node-efo-cell_line-slimmer",
     "request": "^2.72.0",
     "temp": "^0.8.3",
     "xml-nodes": "^0.1.5",

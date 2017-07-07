@@ -16,8 +16,9 @@ const converter_efo = require('node-efo-cell_line-slimmer');
 const CheapJSON = require('./output').CheapJSON;
 const temp = require('temp');
 const path = require('path');
-
-const baseline_whitelist = [ 'E-MTAB-2836', 'E-MTAB-5214','E-MTAB-4344' ];
+// E-MTAB-2706, E-MTAB-2770
+// Both large
+const baseline_whitelist = ['E-GEOD-26284', 'E-MTAB-2836', 'E-MTAB-5214','E-MTAB-4344' ];
 
 const stream = require('stream');
 const util = require('util');
