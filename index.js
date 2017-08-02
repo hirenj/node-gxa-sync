@@ -43,10 +43,13 @@ util.inherits(EntryTransform, Transform);
 temp.track();
 
 EntryTransform.prototype._transform = function(dat,enc,cb) {
-  let gene_id = this.gene[dat['Gene ID']];
+  let ensembl_id = dat['Gene ID'] || dat['GeneID'];
+  let gene_id = this.gene[ensembl_id];
   delete dat['Gene ID'];
+  delete dat['GeneID'];
   delete dat['Gene Name'];
   if ( ! gene_id ) {
+    console.log("Missing Entrez gene identifier for ",ensembl_id);
     cb();
     return;
   }
@@ -61,7 +64,7 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
     }
     return {
       gene: gene_id,
-      loc: term_info.ontology,
+      loc: term_info.ontology_index - 1,
       exp: vals[2],
       annotation: { exp: vals } };
   }).filter( entry => entry );
@@ -298,7 +301,7 @@ let downloadExpData = function(experiment_id,description) {
     Object.keys(map).forEach(sample_id => {
       let term_info = map[sample_id];
       if ( ! ontology_lookup[ term_info.ontology ]) {
-        ontology_lookup[ term_info.ontology ] = true;
+        ontology_lookup[ term_info.ontology ] = ontology_list.length + 1;
         let new_entry = {
           ontology_id: term_info.ontology,
           simple_tissue: term_info.simple_tissue,
@@ -307,6 +310,7 @@ let downloadExpData = function(experiment_id,description) {
         };
         ontology_list.push(new_entry);
       }
+      term_info.ontology_index = ontology_lookup[ term_info.ontology ];
     });
   });
 
