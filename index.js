@@ -63,7 +63,6 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
       console.log("Missing ontology info",sample,this.config[sample]);
     }
     return {
-      gene: gene_id,
       loc: term_info.ontology_index - 1,
       exp: vals[2],
       annotation: { exp: vals } };
