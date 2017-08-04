@@ -20,7 +20,7 @@ phases:
       - bin/download_sets $WORKDIR
       - node index.js --workdir $WORKDIR --version="$TARGETVERSION" --git="$GIT_STATUS" --timestamp="$(date -u +%FT%TZ)"
       - mkdir -p dist
-      - mv gxa*.json dist/
+      - mv gxa_slim*.json dist/
   post_build:
     commands:
       - echo "Skipping post_build"

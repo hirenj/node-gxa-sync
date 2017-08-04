@@ -71,6 +71,22 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
   cb();
 };
 
+
+function Thinner() {
+  if (!(this instanceof Thinner)) {
+    return new Thinner();
+  }
+  Transform.call(this, {objectMode: true});
+};
+
+util.inherits(Thinner, Transform);
+
+Thinner.prototype._transform = function(dat,enc,cb) {
+  let thin_entries = [].concat.apply([], dat[1].map( entry => [ entry.loc, entry.exp ] ));
+  this.push([ dat[0], thin_entries ]);
+  cb();
+};
+
 let getExperiments = () => {
   return new Promise(function(resolve,reject) {
     request(experiments_url,function(err,response,body) {
@@ -241,6 +257,14 @@ const get_ebi_file = function(url) {
   return connect_ftp(url).then(download_file.bind(null,url));
 };
 
+const finished_writing_promise = function(output) {
+  return new Promise( (resolve,reject) => {
+    output.on('finish',resolve);
+    output.on('close',resolve);
+    output.on('error',reject);
+  });
+};
+
 let downloadExpData = function(experiment_id,description) {
   let ontology_url = make_ontology_url(experiment_id);
   console.log(ontology_url);
@@ -319,23 +343,39 @@ let downloadExpData = function(experiment_id,description) {
     'sample' : { 'species': 9606, 'tissue' : 'bto:0001489' },
     'locations' : ontology_list,
     'data-version' : ''+nconf.get('version'),
-    "software" : {"ARRAY": "true", "0" : { "name" : "hirenj/node-gxa-sync", "version" : nconf.get('git') , "run-date" : nconf.get('timestamp') }},
+    "software" : [{ "name" : "hirenj/node-gxa-sync", "version" : nconf.get('git') , "run-date" : nconf.get('timestamp') }],
 
   });
-  let output = fs.createWriteStream(`gxa_${experiment_id}.json`);
+
+  let slim_writer = new CheapJSON({
+    'mimetype' : 'application/json+slim_expression',
+    'title' : `${experiment_id} ${description}`,
+    'sample' : { 'species': 9606, 'tissue' : 'bto:0001489' },
+    'locations' : ontology_list,
+    'data-version' : ''+nconf.get('version'),
+    "software" : [{ "name" : "hirenj/node-gxa-sync", "version" : nconf.get('git') , "run-date" : nconf.get('timestamp') }],
+
+  });
+
+  let output = fs.createWriteStream(`gxa_full_${experiment_id}.json`);
   writer.pipe(output);
+
+  let slim_output = fs.createWriteStream(`gxa_slim_${experiment_id}.json`);
+  slim_writer.pipe(slim_output);
+
 
   return Promise.all([data,ontology_ids,gene_ids,configuration]).then( ids => {
     let transformer = new EntryTransform( ids[1],ids[2],ids[3] );
     return ids[0].pipe(transformer);
   }).then( entry_stream => {
     entry_stream.pipe(writer);
-    return new Promise( (resolve,reject) => {
-      output.on('finish',resolve);
-      output.on('close',resolve);
-      output.on('error',reject);
-      entry_stream.on('error',reject);
-    });
+    entry_stream.pipe(new Thinner()).pipe(slim_writer);
+
+    return Promise.all( [
+      finished_writing_promise(output),
+      finished_writing_promise(slim_output),
+      new Promise( (resolve,reject) => { entry_stream.on('end',resolve); entry_stream.on('close',resolve); entry_stream.on('error',reject); })
+    ]).catch(err => console.log(err)).then( () => console.log("Finished writing files") );
   });
 };
 
