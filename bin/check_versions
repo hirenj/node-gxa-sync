@@ -6,7 +6,7 @@ exit_code=1
 
 exp_sets=$(node index.js --print-sets)
 for exp in $exp_sets; do
-	testversion_skip_exit "gxa_$exp.json" --static "$version"
+	testversion_skip_exit "gxa_slim_$exp.json" --static "$version"
 	retcode=$?
 	if [ $retcode -ne 0 ]; then
 		echo "Existing GXA data for $exp"
