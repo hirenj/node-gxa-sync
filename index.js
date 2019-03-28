@@ -18,7 +18,7 @@ const temp = require('temp');
 const path = require('path');
 // E-MTAB-2706, E-MTAB-2770
 // Both large
-const baseline_whitelist = ['E-GEOD-26284', 'E-MTAB-2836', 'E-MTAB-5214','E-MTAB-4344','E-MTAB-2770' ];
+const baseline_whitelist = ['E-PROT-19','E-GEOD-26284', 'E-MTAB-2836', 'E-MTAB-5214','E-MTAB-4344','E-MTAB-2770' ];
 
 const stream = require('stream');
 const util = require('util');
@@ -53,6 +53,16 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
     cb();
     return;
   }
+
+  let sample_names = Object.keys(this.config);
+  for (let key of Object.keys(dat)) {
+    if (! this.config[key]) {
+      let matching_samples = sample_names.filter( sample => key.indexOf(sample) === 0);
+      if (matching_samples.length === 1) {
+        this.config[key] = this.config[matching_samples[0]];
+      }
+    }
+  }
   let entries = Object.keys(dat).map( sample => {
     let term_info = this.ontology[this.config[sample].sample] || {};
     if (term_info.subcellular) {
@@ -64,7 +74,7 @@ EntryTransform.prototype._transform = function(dat,enc,cb) {
     }
     return {
       loc: term_info.ontology_index - 1,
-      exp: vals[2],
+      exp: vals.length > 1 ? vals[2] : vals[0],
       annotation: { exp: vals } };
   }).filter( entry => entry );
   this.push( [ gene_id, entries ]);
@@ -111,7 +121,7 @@ let filterSpecies = (species,experiments) => {
 
 let filterBaseline = (experiments) => {
   return experiments.filter((exp) => {
-    return exp.experimentType === 'RNASEQ_MRNA_BASELINE';
+    return exp.experimentType === 'RNASEQ_MRNA_BASELINE' || exp.experimentType === 'PROTEOMICS_BASELINE';
   }).filter( exp => {
     return (baseline_whitelist.length == 0) || baseline_whitelist.indexOf(exp.experimentAccession) >= 0;
   });
@@ -157,7 +167,8 @@ const read_configuration = function(stream) {
     data_stream.on('end',resolve);
     stream.on('error',reject);
     data_stream.on('error',reject);
-  }).then( () => result );
+  })
+  .then( () => result );
 };
 
 
@@ -362,6 +373,11 @@ let downloadExpData = function(experiment_id,description) {
 
   let slim_output = fs.createWriteStream(`gxa_slim_${experiment_id}.json`);
   slim_writer.pipe(slim_output);
+
+  data.then( () => console.log('DATA ready'));
+  ontology_ids.then( () => console.log('Ontology IDs ready'));
+  gene_ids.then( () => console.log('Gene IDs ready'));
+  configuration.then( () => console.log('Configuration ready'));
 
 
   return Promise.all([data,ontology_ids,gene_ids,configuration]).then( ids => {
