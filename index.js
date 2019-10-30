@@ -154,7 +154,7 @@ let make_configuration_url = function(experiment_id) {
 };
 
 let make_data_url = function(experiment_id) {
-  return `ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/${experiment_id}/${experiment_id}.tsv`;
+  return `ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/${experiment_id}/${experiment_id}-tpms.tsv`;
 };
 
 const read_configuration = function(stream) {
