@@ -105,10 +105,10 @@ let getExperiments = () => {
         return resolve(err);
       }
       let parsed = JSON.parse(body);
-      if ( ! parsed.aaData) {
+      if ( ! parsed.experiments) {
         return resolve(new Error('Invalid data format'));
       }
-      resolve(parsed.aaData);
+      resolve(parsed.experiments);
     });
   });
 };
@@ -122,7 +122,7 @@ let filterSpecies = (species,experiments) => {
 
 let filterBaseline = (experiments) => {
   return experiments.filter((exp) => {
-    return exp.experimentType === 'RNASEQ_MRNA_BASELINE' || exp.experimentType === 'PROTEOMICS_BASELINE';
+    return exp.rawExperimentType === 'RNASEQ_MRNA_BASELINE' || exp.rawExperimentType === 'PROTEOMICS_BASELINE';
   }).filter( exp => {
     return (baseline_whitelist.length == 0) || baseline_whitelist.indexOf(exp.experimentAccession) >= 0;
   });
@@ -154,7 +154,7 @@ let make_configuration_url = function(experiment_id) {
 };
 
 let make_data_url = function(experiment_id) {
-  return `ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/${experiment_id}/${experiment_id}-tpms.tsv`;
+  return `ftp://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/experiments/${experiment_id}/${experiment_id}${ experiment_id.indexOf('PROT') >= 0 ? '' : '-tpms' }.tsv`;
 };
 
 const read_configuration = function(stream) {
